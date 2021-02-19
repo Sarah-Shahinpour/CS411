@@ -1,1 +1,1 @@
-
+1. The first app will help users to find shows and movies they would like based on their watch history. Users will be able to link their accounts on streaming platforms and after analyzing their watch history the application will suggest movies and shows from different platforms. This app will also allow users to make the lists of movies they would like to watch and notify them if something from the list matches the item in their friends list so they can watch it together.
