@@ -9,9 +9,10 @@ The user can login to their streaming account, input their favorite shows and mo
 *IDEA* When making a new account, the user can also log-in with a google/facebook account
 Flow: sign-up
 We validate all inputs:
-Full name: how many individual strings do we have? Does it contain special characters?
-Username: only letters and numbers, usernames needs to be unique
-Email: will send confirmation email, needs to be unique
+Full name: how many individual strings do we have? Does it contain special characters? We should only allow latin characters for full names.
+Username: only letters and numbers, usernames needs to be unique, we will have a check availability button or status for the user to check if a username has already been taken. Caps matter. 
+Email: will send confirmation email, needs to be unique.
 Password: only contains letters, numbers and special characters (ASCII characters)
 Confirm password: same as password
-IF all fields are validated, then we create an account. Create user profile (object) [“Fullname”, “Username”, “Password”]. IF not all fields are validated, then have the user re-enter the fields
+IF all fields are validated, then we create an account. Create user profile (object) [“Fullname”, “Username”, “Email”, “Password”]. IF not all fields are validated, then have the user re-enter the fields
+
