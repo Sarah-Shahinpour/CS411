@@ -35,6 +35,7 @@ router.get('/auth', function(req, res) {
 router.get('/login', function(req, res) {
     // set up variables
     var scopes = 'user-read-private user-read-email';
+    var redirect_uri = 'localhost:3000';
     res.redirect('https://accounts.spotify.com/authorize' +
       '?response_type=code' +
       '&client_id=' + my_client_id +
