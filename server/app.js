@@ -9,6 +9,7 @@ var app = express();
 
 // set up our route.js where all api calls to server will be handled
 const route = require('./routes/route');
+const spotifyapi = require('./routes/spotifyapi');
 
 // connect to mongodb
 mongoose.connect('mongodb://localhost:27017/userlist', {useUnifiedTopology: true,useNewUrlParser: true});
@@ -30,7 +31,7 @@ const port = 3000;
 app.use(cors());
 app.use(express.json());
 app.use('/api', route);
-
+app.use('/spotifyapi', spotifyapi);
 
 // static files
 app.use(express.static(path.join(__dirname, 'public')));
