@@ -36,12 +36,5 @@ app.use('/spotifyapi', spotifyapi);
 // static files
 app.use(express.static(path.join(__dirname, 'public')));
 
-app.get('/', (req, res) => {res.send('Welcome to Tutorialspoint!')});
-
-//defining route
-app.get('/tproute', function (req, res) {
-   res.send('This is routing for the application developed using Node and Express...');
-});
-
 // startup our app at http://localhost:3000
 app.listen(port, () => console.log(`Server listening on port ${port}!`));
