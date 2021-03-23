@@ -2,10 +2,8 @@ const express = require('express');
 const router = express.Router();
 const fetch = require("node-fetch");
 
-var redirect_uri = 'locathost:3000';
 var my_client_id = 'b3098bd2d517442995f3dbdaea624113';
 var my_secret_id = '765cfcc072624a928dae2992492f18cd';
-var access_token;
 
 router.get('/auth', function(req, res) {
     const Url='https://accounts.spotify.com/api/token';
@@ -25,15 +23,17 @@ router.get('/auth', function(req, res) {
       redirect: 'follow'
     };
     
+    // fetch the access token from spotify api, send response back in json 
     fetch("https://accounts.spotify.com/api/token", requestOptions)
-      .then(response => response.text())
-      .then(result => console.log('result', result))
+      .then(response => response.json())
+      .then(result => res.send(result))
       .catch(error => console.log('error', error));
-    
-      console.log(access_token);
 });
+
+// problem with login getting "INVALID_CLIENT: Invalid redirect URI" error
 router.get('/login', function(req, res) {
     // set up variables
+    var redirect_uri = 'http://localhost:3000/callback/';
     var scopes = 'user-read-private user-read-email';
     var redirect_uri = 'localhost:3000';
     res.redirect('https://accounts.spotify.com/authorize' +
