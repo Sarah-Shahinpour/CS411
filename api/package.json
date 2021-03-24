@@ -1,0 +1,21 @@
+{
+  "name": "411_project",
+  "version": "1.0.0",
+  "description": "A group project for CS411",
+  "private": true,
+  "scripts": {
+    "start": "node ./src/bin/www"
+  },
+  "author": "Jason Chow, Nikoloz Rapava, Rifat Maxyutov, Sarah Shahinpour, Tanner Jiwon Park",
+  "license": "ISC",
+  "dependencies": {
+    "cookie-parser": "~1.4.4",
+    "cors": "^2.8.5",
+    "debug": "~2.6.9",
+    "express": "~4.17.1",
+    "http-errors": "~1.6.3",
+    "mongoose": "^5.12.2",
+    "morgan": "~1.9.1",
+    "node-fetch": "^2.6.1"
+  }
+}
