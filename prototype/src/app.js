@@ -10,6 +10,7 @@ const mongoose = require ('mongoose');
 // set up our routes where all api calls to the server will be handled
 const indexapi = require('./routes/index');
 const mongoapi = require('./routes/mongoapi');
+const spotifyauth = require('./routes/auth');
 const spotifyapi = require('./routes/spotifyapi');
 
 // start our express server
@@ -28,17 +29,22 @@ mongoose.connection.on('errer', (err)=>{
    }
 });
 
+// view 
+app.set('views', path.join(__dirname, './views'));
+app.set('view engine', 'pug');
+
 // middleware
 app.use(logger('dev'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
 app.use(cors());
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, '../public')));
 
 // routes
 app.use('/', indexapi);
 app.use('/api', mongoapi);
+app.use('/auth', spotifyauth);
 app.use('/spotifyapi', spotifyapi);
 
 // catch 404 and forward to error handler
@@ -54,7 +60,7 @@ app.use(function(err, req, res, next) {
 
   // render the error page
   res.status(err.status || 500);
-  res.render('error');
+  res.render('error', {message: err.status});
 });
 
 //export for bin/www
