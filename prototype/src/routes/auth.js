@@ -13,8 +13,8 @@ const request = require('request'); // "Request" library
 const querystring = require('querystring');
 const router = express.Router();
 
-var client_id = 'b3098bd2d517442995f3dbdaea624113'; // Your client id
-var client_secret = '765cfcc072624a928dae2992492f18cd'; // Your secret
+var client_id = ''; // Your client id
+var client_secret = ''; // Your secret
 var redirect_uri = 'http://localhost:3000/auth/callback/'; // Your redirect uri
 
 var send_response = 0; // used to see if we render view or send response back
