@@ -1,0 +1,5 @@
+We considered two stcks: MERN and MEAN. 
+We initially considered these two as our candidates because they are the most widely used stacks today and we thought it was a good place to start.
+More importantly, some of us had previously used mongoDB and Node before, so this was an obvious choice.
+The real choice had to be made between Angular and React. No one on the team had any substantial experience with Angular, but some of us had a good amount of experience with
+React, so we decided to go with the MERN stack. 
