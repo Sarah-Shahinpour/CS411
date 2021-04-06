@@ -13,11 +13,15 @@ const mongoapi = require('./routes/mongoapi');
 const spotifyauth = require('./routes/auth');
 const spotifyapi = require('./routes/spotifyapi');
 
+//configs 
+const config = require('./config/config');
+const { db: { host, port, name } } = config;
+
 // start our express server
 var app = express();
 
 // connect to mongodb
-var mongoURL = 'mongodb://localhost:27017/userlist';
+var mongoURL = `mongodb://${host}:${port}/${name}`;
 mongoose.connect(mongoURL, {useUnifiedTopology: true,useNewUrlParser: true});
 // check if connected
 mongoose.connection.on('connected', ()=> {
