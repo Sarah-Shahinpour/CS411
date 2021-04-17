@@ -5,5 +5,5 @@
 4) enter npm start to start the server listening at localhost:3000/
 
 ADDITIONAL-REQUIRED downloads
-*MongoDB
-*Redis
+1) MongoDB
+2) Redis
