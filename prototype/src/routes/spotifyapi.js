@@ -10,6 +10,9 @@ var client_id = config.spotify.SPOTIFY_CLIENTID; // Your client id
 var client_secret = config.spotify.SPOTIFY_SECRETID; // Your secret
 var redirect_uri = config.spotify.callback; // Your redirect uri
 
+/* Use redis for cache */
+const client = require('./redis');
+
 var send_response = 0; // used to see if we render view or send response back
 var stateKey = 'spotify_auth_state';
 /**
@@ -27,7 +30,19 @@ var generateRandomString = function(length) {
     return text;
 };
 
-router.get('/server', function(req, res) {
+function checkServerAccessTokenCache(req, res, next){
+    client.get('spotifyServerAccessToken', (err, data) => {
+        if(err) throw err;
+
+        if(data != null){
+            res.status(200).send(data);
+        }else{
+            next();
+        }
+    });
+}
+
+router.get('/server', checkServerAccessTokenCache, function(req, res) {
     var options = {
         'url': 'https://accounts.spotify.com/api/token',
         'headers': {
@@ -42,27 +57,47 @@ router.get('/server', function(req, res) {
   
     request.post(options, function (error, response, body) {
         if (!error && response.statusCode === 200) {
-            var state = generateRandomString(16);
+            var state = generateRandomString(64);
             res.cookie(stateKey, state);
             console.log(response.body);
             if(send_response){
-            res.status(200).json({access_token : response});
+                res.status(200).send(reponse);
             } else{
-            res.render('user', {titleheader: 'serverLogin', access_token : body.access_token, 
-            refresh_token : 'no refresh_token for server to server connection', 
-            state: state});
+                //save client into redis cache
+                client.setex('spotifyServerAccessToken', 3600, body.access_token);
+                res.render('user', {titleheader: 'serverLogin', access_token : body.access_token, 
+                refresh_token : 'no refresh_token for server to server connection', 
+                state: state});
             }
         } else{
             if(send_response){
-            res.json({error: 'Unable to connect to spotify api'});
+                res.json({error: 'Unable to connect to spotify api'});
             } else{
-            res.render('error', {message : 'unable to connect to spotify api with client credentials'});
+                res.render('error', {message : 'unable to connect to spotify api with client credentials'});
             }
         }
     });
 });
 
-router.get('/login', function(req, res) {
+function checkUserAccessTokenCache(req, res, next){
+    const  { id } = req.params;
+    if(id != null){
+        client.get((id+':spotifyUserAccessToken'), (err, data) => {
+            if(err) throw err;
+
+            if(data != null){
+                res.status(200).send(data);
+            }else{
+                next();
+            }
+        });
+    } else{
+        console.log(id);
+    }
+}
+
+/* Need to be fixed, callback function */
+router.get('/login/:id', checkUserAccessTokenCache, function(req, res) {
     //set a random string as state, this helps prevent Cross-site scripting attacks
     //CAN BE MODIFIED MORE FOR OUR OWN SECURITY MEASURES
     var state = generateRandomString(16);
@@ -111,7 +146,6 @@ router.get('/callback', function(req, res) {
             if (!error && response.statusCode === 200) {
             var access_token = body.access_token,
                 refresh_token = body.refresh_token;
-
             var options = {
                 url: 'https://api.spotify.com/v1/me',
                 headers: { 'Authorization': 'Bearer ' + access_token },
@@ -123,6 +157,8 @@ router.get('/callback', function(req, res) {
                 console.log(body);
             });
 
+            const tokens = access_token + '+' + refresh_token;
+            client.setex('1337:spotifyUserAccessToken', 360, tokens);
             // we can also pass the token to the browser to make requests from there
             if(send_response){
                 res.status(200).json({req_body: body});
@@ -168,6 +204,11 @@ router.get('/refresh_token/:id', function(req, res) {
     });
 });
 
+/* log out */
+router.get('/logout', function(req, res, next){
+    res.redirect('https://spotify.com/logout');
+});
+
 /* Have access token */
 router.get('/nr/:token', function(req, res, next) { 
     var options = {
@@ -183,7 +224,7 @@ router.get('/nr/:token', function(req, res, next) {
       //output the album and author names,
       console.log(response.body);
       //res.send(response.body);
-      res.render("display", {data : JSON.stringify(response.body)});
+      res.send({data : JSON.stringify(response.body)});
     });
 });
 
