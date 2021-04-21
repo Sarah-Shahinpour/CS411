@@ -5,25 +5,13 @@ const path = require('path');
 const cookieParser = require('cookie-parser');
 const logger = require('morgan');
 const cors = require('cors');
-const mongoose = require ('mongoose');
 
-// set up our routes where all api calls to the server will be handled
-const indexapi = require('./routes/index');
-const mongoapi = require('./routes/mongoapi');
-const auth = require('./routes/auth');
-const spotifyapi = require('./routes/spotifyapi');
-
-//configs 
+// mongo
 const config = require('./config/config');
-
-// start our express server
-var app = express();
+const mongoose = require ('mongoose');
 const { db: { host, port, name } } = config;
-
-// connect to mongodb
 var mongoURL = `mongodb://${host}:${port}/${name}`;
 mongoose.connect(mongoURL, {useUnifiedTopology: true,useNewUrlParser: true});
-// check if connected
 mongoose.connection.on('connected', ()=> {
    console.log('Connected to database mongodb @ 27017');
 });
@@ -32,6 +20,15 @@ mongoose.connection.on('errer', (err)=>{
       console.log('Error in database connection:' + err);
    }
 });
+
+// set up our routes where all api calls to the server will be handled
+const indexapi = require('./routes/index');
+const mongoapi = require('./routes/mongoapi');
+const auth = require('./routes/auth');
+const spotifyapi = require('./routes/spotifyapi');
+
+// start our express server
+var app = express();
 
 // view 
 app.set('views', path.join(__dirname, './views'));
@@ -46,6 +43,14 @@ app.use(cors());
 app.use(express.static(path.join(__dirname, '../public')));
 
 // routes
+/*
+app.use(function(req, res, next) {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+    res.header('Access-Control-Allow-Credentials', true);
+    next();
+}); */
+
 app.use('/', indexapi);
 app.use('/api', mongoapi);
 app.use('/login', auth);
