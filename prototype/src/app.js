@@ -10,14 +10,18 @@ const mongoose = require ('mongoose');
 // set up our routes where all api calls to the server will be handled
 const indexapi = require('./routes/index');
 const mongoapi = require('./routes/mongoapi');
-const spotifyauth = require('./routes/auth');
+const auth = require('./routes/auth');
 const spotifyapi = require('./routes/spotifyapi');
+
+//configs 
+const config = require('./config/config');
 
 // start our express server
 var app = express();
+const { db: { host, port, name } } = config;
 
 // connect to mongodb
-var mongoURL = 'mongodb://localhost:27017/userlist';
+var mongoURL = `mongodb://${host}:${port}/${name}`;
 mongoose.connect(mongoURL, {useUnifiedTopology: true,useNewUrlParser: true});
 // check if connected
 mongoose.connection.on('connected', ()=> {
@@ -44,7 +48,7 @@ app.use(express.static(path.join(__dirname, '../public')));
 // routes
 app.use('/', indexapi);
 app.use('/api', mongoapi);
-app.use('/auth', spotifyauth);
+app.use('/login', auth);
 app.use('/spotifyapi', spotifyapi);
 
 // catch 404 and forward to error handler

@@ -1,178 +1,105 @@
-/**
- * This is an example of a basic node.js script that performs
- * the Authorization Code oAuth2 flow to authenticate against
- * the Spotify Accounts.
- *
- * For more information, read
- * https://developer.spotify.com/web-api/authorization-guide/#authorization_code_flow
- */
-
-/* taken from Spotify Web API template and integrated into our routes for /auth */
-const express = require('express'); // Express web server framework
-const request = require('request'); // "Request" library
-const querystring = require('querystring');
+const express = require('express');
 const router = express.Router();
 
-var client_id = ''; // Your client id
-var client_secret = ''; // Your secret
-var redirect_uri = 'http://localhost:3000/auth/callback/'; // Your redirect uri
+const Login = require('../models/login');
+const User = require('../models/users');
+const config = require('../config/config');
 
-var send_response = 0; // used to see if we render view or send response back
-var stateKey = 'spotify_auth_state';
-/**
-* Generates a random string containing numbers and letters
-* @param  {number} length The length of the string
-* @return {string} The generated string
-*/
-var generateRandomString = function(length) {
-    var text = '';
-    var possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+/* import crypto-js */
+const CryptoJS = require('crypto-js');
 
-    for (var i = 0; i < length; i++) {
-      text += possible.charAt(Math.floor(Math.random() * possible.length));
-    }
-    return text;
-};
+// retrieve user data
+router.get('/', (req, res, next) => {
+    Login.find(function(err, userlogins){
+        res.status(200).json(userlogins);
+    })
+});
+/*
+function checkUsername(req, res, next){
+    Login.find({username : myusername}, function(err, userlogins){
+}*/
 
-router.get('/server', function(req, res) {
-    var options = {
-        'url': 'https://accounts.spotify.com/api/token',
-        'headers': {
-            'Authorization': 'Basic ' + (Buffer.from(client_id + ':' + client_secret).toString('base64')),
-            'Content-Type': 'application/x-www-form-urlencoded'
-        },
-        form: {
-            'grant_type': 'client_credentials'
-        },
-        json: true 
-    };
-  
-    request.post(options, function (error, response, body) {
-        if (!error && response.statusCode === 200) {
-            var state = generateRandomString(16);
-            res.cookie(stateKey, state);
-            console.log(response.body);
-            if(send_response){
-            res.status(200).json({access_token : response});
-            } else{
-            res.render('user', {titleheader: 'serverLogin', access_token : body.access_token, 
-            refresh_token : 'no refresh_token for server to server connection', 
-            state: state});
-            }
+// add user data ** need to fix **
+router.post('/user', (req, res, next)=>{
+    var myusername = req.body.username;
+    var password = req.body.password;
+    var email = req.body.email;
+
+    //check if username is unique
+    Login.find({username : myusername}, function(err, userlogins){
+        //then we can continue to make the acc
+        if(userlogins.length != 0){
+            console.log('Error! Username was already taken.');
+            res.status(300).json({message : 'username was already taken!!'});
         } else{
-            if(send_response){
-            res.json({error: 'Unable to connect to spotify api'});
-            } else{
-            res.render('error', {message : 'unable to connect to spotify api with client credentials'});
-            }
+            //create user
+            let newUser = new User({
+                spotify:{
+                    havespotify: false,
+                }
+            });
+            newUser.save((err, user)=>{
+                if(err){
+                    console.log(err);
+                    res.status(305).json({msg: 'Failed to add user with User Schema!', error : err});
+                }else{
+                    //successfully created User schema, now Login schema
+                    var rsalt = CryptoJS.lib.WordArray.random(16);
+                    var saltedHash = CryptoJS.SHA256(config.crypto.salt+rsalt+password);
+                    let newLogin = new Login({
+                        username: myusername,
+                        password: saltedHash,
+                        email : email,
+                        rsalt : rsalt,
+                        key : user._id
+                    });
+                    newLogin.save((err, userLogin)=>{
+                        if(err){
+                            console.log('Unable to create login schema!');
+                            // delete User schema 
+                            User.delete({username : myusername}, function(err, result){
+                                if(err){
+                                    console.log("Unable to delete user Schema made, oops?");
+                                }
+                            });
+                            res.status(304);
+                        }else{
+                            res.status(200).json({msg: 'User added successfully'});
+                        }
+                    });
+                }
+            });
         }
     });
 });
 
-router.get('/login', function(req, res) {
-    //set a random string as state, this helps prevent Cross-site scripting attacks
-    //CAN BE MODIFIED MORE FOR OUR OWN SECURITY MEASURES
-    var state = generateRandomString(16);
-    res.cookie(stateKey, state);
-
-    // your application requests authorization
-    var scope = 'user-read-private user-read-email';
-    res.redirect('https://accounts.spotify.com/authorize?' +
-    querystring.stringify({
-        response_type: 'code',
-        client_id: client_id,
-        scope: scope,
-        redirect_uri: redirect_uri,
-        state: state
-    }));
-});
-
-router.get('/callback', function(req, res) {
-    // your application requests refresh and access tokens
-    // after checking the state parameter
-    var code = req.query.code || null;
-    var state = req.query.state || null;
-    var storedState = req.cookies ? req.cookies[stateKey] : null;
-
-    //after user logins, we use the authorication_code provided to us in response to obtain the user's access token and refresh token
-    if (state === null || state !== storedState) {
-        res.json({error: "INVALID statekey"});
-    } else {
-        res.clearCookie(stateKey);
-        var authOptions = {
-            url: 'https://accounts.spotify.com/api/token',
-            form: {
-            code: code,
-            redirect_uri: redirect_uri,
-            grant_type: 'authorization_code'
-            },
-            headers: {
-            'Authorization': 'Basic ' + (Buffer.from(client_id + ':' + client_secret).toString('base64'))
-            },
-            json: true
-        };
-
-        //make a request call
-        request.post(authOptions, function(error, response, body) {
-            //callback from request call
-            if (!error && response.statusCode === 200) {
-            var access_token = body.access_token,
-                refresh_token = body.refresh_token;
-
-            var options = {
-                url: 'https://api.spotify.com/v1/me',
-                headers: { 'Authorization': 'Bearer ' + access_token },
-                json: true
-            };
-
-            // use the access token to access the Spotify Web API
-            request.get(options, function(error, response, body) {
-                console.log(body);
+//delete contacts, maybe require authenication?
+router.delete('/user/', (req, res, next)=> {
+    const username = req.body.username;
+    Login.findOne({username : username}, function(error, data){
+        if(error){
+            console.log("error had occur when finding username");
+            res.status(200).json({error : error});
+        }else{
+            User.deleteOne({_id : data.key}, function(err2, result2){
+                if(err2){
+                    console.log("error when deleting user schema" );
+                    res.status(200).json({error : err2});
+                }else{
+                    console.log("successfully deleted user schema");
+                    Login.deleteOne({username: username}, function(err, result){
+                        if(err){
+                            console.log("error when deleting login schema" );
+                            res.status(200).json({error0 : err2, error : err});
+                        } else{
+                            console.log("successfully deleted login schema");
+                            res.status(200).json({result0 : result2, result : result});
+                        }
+                    });
+                }
             });
-
-            // we can also pass the token to the browser to make requests from there
-            if(send_response){
-                res.status(200).json({req_body: body});
-            } else{
-                res.render('user', {titleheader: 'userLogin',access_token : body.access_token, 
-                refresh_token : body.refresh_token, 
-                state: state});
-            }
-            } else {
-                if(send_response){
-                res.json({error: 'invalid_token'});
-                } else{
-                res.render('error', {message : 'unable to connect to spotify api with user login credentials'});
-                } 
-            }
-        });
-    }
-});
-
-router.get('/refresh_token/:id', function(req, res) {
-    // requesting access token from refresh token
-    var refresh_token = req.params.id;
-    console.log(refresh_token);
-    var authOptions = {
-        url: 'https://accounts.spotify.com/api/token',
-        headers: { 'Authorization': 'Basic ' + (Buffer.from(client_id + ':' + client_secret).toString('base64'))},
-        form: {
-            grant_type: 'refresh_token',
-            refresh_token: refresh_token
-        },
-        json: true
-    };
-
-    request.post(authOptions, function(error, response, body) {
-        if (!error && response.statusCode === 200) {
-            var access_token = body.access_token;
-            res.send({
-            'access_token': access_token
-            });
-        } else{
-            res.send({'access_token': "error"});
         }
-    });
+    });   
 });
 
 module.exports = router;
