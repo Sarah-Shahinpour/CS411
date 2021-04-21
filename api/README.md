@@ -5,5 +5,5 @@
 4) enter npm start to start the server listening at localhost:3000/
 
 ADDITIONAL-REQUIRED downloads
-1) MongoDB
+1) MongoDB - https://www.mongodb.com/try/download/community
 2) Redis - https://github.com/microsoftarchive/redis/releases/tag/win-3.2.100
