@@ -23,7 +23,15 @@ UserSchema.virtual('havespotify')
 });
 
 //check what the username is
-UserSchema.virtual('refreshtoken').set(function(str){
+UserSchema.virtual('refreshtoken')
+.get(function(){
+    if(this.havespotify){
+        return this.spotify.spotifytoken;
+    }else{
+        return 'NADA';
+    }
+})
+.set(function(str){
     this.spotify.spotifytoken = str;
 });
 
