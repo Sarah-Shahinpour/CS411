@@ -14,6 +14,7 @@ var redirect_uri = config.spotify.callback; // Your redirect uri
 const client = require('./redis');
 
 var stateKey = 'spotify_auth_state';
+var sessionId = 'sessionId';
 /**
 * Generates a random string containing numbers and letters
 * @param  {number} length The length of the string
@@ -53,7 +54,7 @@ router.get('/server', checkServerAccessTokenCache, function(req, res) {
         },
         json: true 
     };
-  
+
     request.post(options, function (error, response, body) {
         if (!error && response.statusCode === 200) {
             var state = generateRandomString(16);
@@ -71,23 +72,24 @@ router.get('/server', checkServerAccessTokenCache, function(req, res) {
 });
 
 function checkUserAccessTokenCache(req, res, next){
-    var id = req.body.id;
-    client.get((id+':spotifyUserAccessToken'), (err, data) => {
+    var id = req.params.id;
+    client.get(id+':spotifyUserAccessToken', (err, data) => {
         if(err) throw err;
-
         if(data != null){
-            res.status(200).send(data);
+            //res.status(200).send(data);
+            res.redirect('http://localhost:3000?' + querystring.stringify({access_token : data}));
         }else{
             next();
         }
     });
 }
-router.get('/login/', checkUserAccessTokenCache, function(req, res) {
+
+router.get('/login/:id', checkUserAccessTokenCache, function(req, res) {
     //set a random string as state, this helps prevent Cross-site scripting attacks
     //CAN BE MODIFIED MORE FOR OUR OWN SECURITY MEASURES
     var state = generateRandomString(16);
-    var id = req.body.id;
     res.cookie(stateKey, state);
+    var id = req.params.id;
     res.cookie(sessionId, id);
 
     // your application requests authorization
@@ -135,13 +137,14 @@ router.get('/callback', function(req, res) {
             if (!error && response.statusCode === 200) {
                 var access_token = body.access_token,
                     refresh_token = body.refresh_token;
+
+
+                // print the information of your spotify account to console. ***REMOVE IN PRODUCTION***
                 var options = {
                     url: 'https://api.spotify.com/v1/me',
                     headers: { 'Authorization': 'Bearer ' + access_token },
                     json: true
                 };
-
-                // print the information of your spotify account to console. ***REMOVE IN PRODUCTION***
                 request.get(options, function(error, response, body) {
                     console.log(body);
                 });
@@ -150,7 +153,8 @@ router.get('/callback', function(req, res) {
                 client.setex(storedId+':spotifyUserAccessToken', 360, tokens);
 
                 //WARNING!!! INSECURE, shouldn't be sending access token
-                res.status(200).json({access_token : body.access_token, rest : JSON.stringify(body)});
+                //res.status(200).json({access_token : body.access_token, rest : JSON.stringify(body)});
+                res.redirect('http://localhost:3000/' + querystring.stringify({access_token : body.access_token}));
             } else {
                 res.json({error: 'invalid_token'});
             }
@@ -184,27 +188,6 @@ router.get('/refresh_token/:id', function(req, res) {
     });
 });
 
-const getAccessToken = (refresh_token) =>{
-    var authOptions = {
-        url: 'https://accounts.spotify.com/api/token',
-        headers: { 'Authorization': 'Basic ' + (Buffer.from(client_id + ':' + client_secret).toString('base64'))},
-        form: {
-            grant_type: 'refresh_token',
-            refresh_token: refresh_token
-        },
-        json: true
-    };
-
-    request.post(authOptions, function(error, response, body) {
-        if (!error && response.statusCode === 200) {
-            var access_token = body.access_token;
-            return access_token;
-        } else{
-            return 'error';
-        }
-    });
-}
-
 /* log out */
 router.get('/logout', function(req, res, next){
     res.redirect('https://spotify.com/logout');
@@ -229,5 +212,4 @@ router.get('/nr/:token', function(req, res, next) {
     });
 });
 
-exports.getAccessToken = getAccessToken();
 module.exports = router;
