@@ -1,5 +1,7 @@
 const mongoose = require('mongoose');
 const User = require('./users');
+const config = require('../config/config');
+const CryptoJS = require('crypto-js');
 
 const LoginSchema = mongoose.Schema({
     username:{
@@ -22,6 +24,20 @@ const LoginSchema = mongoose.Schema({
         type: String,
         required: true
     }
+});
+
+LoginSchema.virtual('getpassword')
+.get(function(){
+    return this.password;
+});
+
+//check if user have a spotify account login
+LoginSchema.virtual('getkey')
+.get(function(){
+    return this.key;
+})
+.set(function(str){
+    this.key = str;
 });
 
 const Login = module.exports = mongoose.model('Login', LoginSchema);
