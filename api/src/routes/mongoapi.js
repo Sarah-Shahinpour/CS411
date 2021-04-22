@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 
 const config = require('../config/config');
-const User = require('../models/users');
+const User = require('../models/user');
 
 // retrieve user data
 router.get('/users/:id', (req, res, next) => {
