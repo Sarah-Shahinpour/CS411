@@ -149,7 +149,7 @@ router.get('/callback', function(req, res) {
                     console.log(body);
                 });
 
-                const tokens = access_token + '+' + refresh_token;
+                const tokens = access_token;
                 client.setex(storedId+':spotifyUserAccessToken', 360, tokens);
 
                 //WARNING!!! INSECURE, shouldn't be sending access token
