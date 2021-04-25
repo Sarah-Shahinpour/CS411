@@ -5,7 +5,7 @@ Username - has to be unique, we will check against our db for availability
 Email
 Password
 Confirm password
-The user can login to their streaming account, input their favorite shows and movies, and customize their profile after signing up.
+The user can login to their streaming account, input their favorite songs, and customize their profile after signing up.
 *IDEA* When making a new account, the user can also log-in with a google/facebook account
 Flow: sign-up
 We validate all inputs:
