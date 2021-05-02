@@ -5,10 +5,21 @@ const Login = require('../models/login');
 const User = require('../models/user');
 const config = require('../config/config');
 
+const redis = require('./redis');
 /* import crypto-js */
 const CryptoJS = require('crypto-js');
 
-// retrieve user data
+var generateRandomString = function(length) {
+    var text = '';
+    var possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+
+    for (var i = 0; i < length; i++) {
+      text += possible.charAt(Math.floor(Math.random() * possible.length));
+    }
+    return text;
+};
+
+// retrieve user login data, require id as passcode, set in config
 router.get('/users/:id', (req, res, next) => {
     var _id = req.params.id;
     if(_id == config.crypto.admin){
@@ -24,7 +35,7 @@ router.get('/users/:id', (req, res, next) => {
     }
 });
 
-//login
+//login, username and password required in the body
 router.post('/userlogin', (req, res, next)=>{
     //inputs, x-www-form-urlencoded in body
     var myusername = escape(req.body.username);
@@ -44,7 +55,13 @@ router.post('/userlogin', (req, res, next)=>{
                         //401 Unauthorized or 403 : Forbidden
                         res.status(401).json({message : 'Error! Username or password is incorrect.'}); 
                     }
-                    res.status(200).json({refresh_token : user.refreshtoken});
+                    let sessionId = generateRandomString(16);
+                    let sess = generateRandomString(8)
+                    user.updateSession = sess;
+                    /* saves session for a day */
+                    redis.setex('UserSession:'+sessionId, 43200, sess);
+                    user.save();
+                    res.status(200).json({session : sessionId});
                 });
             }else{
                 console.log('Error! ' + myusername + ' tried to login using password ' + password);
@@ -55,68 +72,17 @@ router.post('/userlogin', (req, res, next)=>{
     });
 });
 
-//add user with spotify token
-router.post('/userWithSpotify', (req, res, next)=>{
-    //inputs, x-www-form-urlencoded in body.
-    var myusername = req.body.username;
-    var password = req.body.password;
-    var email = req.body.email;
-    var refreshToke = req.body.refresh_Token;
-    Login.find({username : myusername}, function(err, userlogins){
-        //then we can continue to make the acc
-        if(userlogins.length != 0){
-            console.log('Error! Username was already taken.');
-            res.status(401).json({message : 'username was already taken!! Please try again'});
-        } else{
-            //create user
-            let newUser = new User({
-                spotify:{
-                    havespotify: true,
-                    spotifytoken: refreshToke
-                }
-            });
-            newUser.save((err, user)=>{
-                if(err){
-                    console.log(err);
-                    res.status(401).json({msg: 'Failed to add user with User Schema!', error : err});
-                }else{
-                    //successfully created User schema, now Login schema
-                    var rsalt = CryptoJS.lib.WordArray.random(16);
-                    var saltedHash = CryptoJS.SHA256(config.crypto.salt+rsalt+password);
-                    let newLogin = new Login({
-                        username: myusername,
-                        password: saltedHash,
-                        email : email,
-                        rsalt : rsalt,
-                        key : user._id
-                    });
-                    newLogin.save((err, userLogin)=>{
-                        if(err){
-                            console.log('Unable to create login schema!');
-                            // delete User schema 
-                            User.delete({username : myusername}, function(err, result){
-                                if(err){
-                                    console.log("Unable to delete user Schema made, oops?");
-                                }
-                            });
-                            res.status(401).json({message : 'Error! Unable to make account at this time.'});
-                        }else{
-                            res.status(200).json({msg: 'User added successfully'});
-                        }
-                    });
-                }
-            });
-        }
-    });
-});
-
-// add user data, no spotify refresh token
+// add user data, NOTE if we want to add spotify to acc, we make account first, then request user login
+// if the user has previously login to spotify, we'll ignore redis cache and send req to spotify anyways, then save refresh_token
 router.post('/user', (req, res, next)=>{
     //inputs, x-www-form-urlencoded in body.
-    var myusername = req.body.username;
-    var password = req.body.password;
-    var email = req.body.email;
+    var myusername = req.body.username || null;
+    var password = req.body.password|| null;
+    var email = req.body.email|| null;
 
+    if(myusername == null || password == null || email == null){
+        res.status(400).json({message : 'Failed to add user'});
+    }
     //check if username is unique
     Login.find({username : myusername}, function(err, userlogins){
         //then we can continue to make the acc
@@ -124,24 +90,30 @@ router.post('/user', (req, res, next)=>{
             console.log('Error! Username was already taken.');
             res.status(400).json({message : 'username was already taken!!'});
         } else{
-            //create user
+            //create user & user session ID
+            var session = generateRandomString(8);
             let newUser = new User({
                 spotify:{
                     havespotify: false,
-                }
+                },
+                session : session
             });
             newUser.save((err, user)=>{
                 if(err){
                     console.log(err);
-                    res.status(400).json({msg: 'Failed to add user with User Schema!', error : err});
+                    res.status(400).json({msg: 'Failed to add user', error : err});
                 }else{
                     //successfully created User schema, now Login schema
                     var rsalt = CryptoJS.lib.WordArray.random(16);
-                    var saltedHash = CryptoJS.SHA256(config.crypto.salt+rsalt+password);
+                    let escapedPassword = escape(password);
+                    var saltedHash = CryptoJS.SHA256(config.crypto.salt+rsalt+escapedPassword);
+                    
+                    let escapedUsername = escape(myusername);
+                    let escapedEmail = escape(email);
                     let newLogin = new Login({
-                        username: myusername,
+                        username: escapedUsername,
                         password: saltedHash,
-                        email : email,
+                        email : escapedEmail,
                         rsalt : rsalt,
                         key : user._id
                     });
@@ -154,9 +126,9 @@ router.post('/user', (req, res, next)=>{
                                     console.log("Unable to delete user Schema made, oops?");
                                 }
                             });
-                            res.status(400);
+                            res.status(400).json({msg: 'Failed to add user', error : err});
                         }else{
-                            res.status(200).json({msg: 'User added successfully'});
+                            res.status(200).json({msg: 'User added successfully', sessionId : session});
                         }
                     });
                 }
