@@ -10,6 +10,10 @@ const UserSchema = mongoose.Schema({
             type: String,
             required: false
         }
+    },
+    session :{
+        type : String,
+        required: true
     }
 });
 
@@ -33,6 +37,13 @@ UserSchema.virtual('refreshtoken')
 })
 .set(function(str){
     this.spotify.spotifytoken = str;
+    this.spotify.havespotify = true;
+});
+
+//update session
+UserSchema.virtual('updateSession')
+.set(function(sess){
+    this.session = sess;
 });
 
 const User = module.exports = mongoose.model('User', UserSchema);
