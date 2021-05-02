@@ -1,5 +1,5 @@
 const mongoose = require('mongoose');
-const User = require('./users');
+const User = require('./user');
 const config = require('../config/config');
 const CryptoJS = require('crypto-js');
 
@@ -39,5 +39,6 @@ LoginSchema.virtual('getkey')
 .set(function(str){
     this.key = str;
 });
+
 
 const Login = module.exports = mongoose.model('Login', LoginSchema);
