@@ -26,6 +26,7 @@ const indexapi = require('./routes/index');
 const mongoapi = require('./routes/mongoapi');
 const auth = require('./routes/auth');
 const spotifyapi = require('./routes/spotifyapi');
+const shazamapi = require('./routes/shazamapi');
 
 // start our express server
 var app = express();
@@ -55,6 +56,7 @@ app.use('/', indexapi);
 app.use('/api', mongoapi);
 app.use('/login', auth);
 app.use('/spotifyapi', spotifyapi);
+app.use('/shazamapi', shazamapi);
 
 // catch 404 and forward to error handler
 app.use(function(req, res, next) {
