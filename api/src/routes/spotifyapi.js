@@ -79,27 +79,12 @@ function checkAndAcquireServerToken(req, res, next){
     });
 }
 
-/* Check if user has access token, need an authenication code that verifies in redis cache */
-function checkUserAccessTokenCache(req, res, next){
-    var id = req.params.id;
-    redis.get(id+':spotifyUserAccessToken', (err, data) => {
-        if(err) throw err;
-        if(data != null){
-            //res.status(200).send(data);
-            res.redirect('http://localhost:3000?' + querystring.stringify({access_token : data}));
-        }else{
-            next();
-        }
-    });
-}
-
-/* login to spotify without account, id should be randomly generated from frontend */
-router.get('/login/:id', checkUserAccessTokenCache, function(req, res) {
-    /* set a random string as state, this helps prevent Cross-site scripting attacks */
+/* login to spotify without account */
+router.get('/login/', function(req, res) {
     var state = generateRandomString(16);
     res.cookie(stateKey, state);
     /* id is used to identify users not logged in to our app in cache */
-    var id = req.params.id;
+    var id = generateRandomString(32);
     res.cookie(sessionId, id);
 
     /* requests authorization */
@@ -114,6 +99,7 @@ router.get('/login/:id', checkUserAccessTokenCache, function(req, res) {
     }));
 });
 
+/* need to fix */
 function checkUserRefreshToken(req, res, next){
     var id = req.params.id;
     redis.get('UserSession:'+id, (err, data)=>{
@@ -162,7 +148,7 @@ function checkUserRefreshToken(req, res, next){
 }
 
 /* login to spotify when login to application */
-router.get('/loginWithAcc/:id/', checkUserAccessTokenCache, checkUserRefreshToken, function(req, res) {
+router.get('/loginWithAcc/:id/', checkUserRefreshToken, function(req, res) {
     //set a random string as state, this helps prevent Cross-site scripting attacks
     //CAN BE MODIFIED MORE FOR OUR OWN SECURITY MEASURES
     var state = generateRandomString(16);
@@ -191,12 +177,6 @@ router.get('/callback', function(req, res) {
     var state = req.query.state || null;
     var storedState = req.cookies ? req.cookies[stateKey] : null;
     var storedId = req.cookies ? req.cookies[sessionId] : null;
-
-    let haveAccount = req.cookies ? req.cookies['haveAccount'] : null;
-    if(haveAccount != null){
-        var login = true;
-        res.clearCookie('haveAccount');
-    }
 
     // use the authorication_code provided to us in response to obtain the user's access token and refresh token
     if (state === null || state !== storedState) {
@@ -235,30 +215,14 @@ router.get('/callback', function(req, res) {
                     console.log(body);
                 });
 
-                redis.setex(storedId+':spotifyUserAccessToken', 360, access_token);
-                //save refresh token to account if haveAccount is true
-                if(login){
-                    redis.get(storedId, )
-                    User.findOne({session : storedId}, function(error, user){
-                        if(error){
-                            console.log('unable to find user schema when adding spotify to account');
-                            //401 Unauthorized or 403 : Forbidden
-                            res.status(401).json({message : 'Unable to add spotify to account!'}); 
-                        }
-                        user.refreshtoken = refresh_token;
-                        user.save(err=>{
-                            if(err){
-                                console.log('Unable to save account');
-                            }
-                        });
-                    });     
-                }
+                redis.setex(storedId+':spotifyUserAccessToken', 3600, access_token);
+               
                 //WARNING!!! INSECURE, shouldn't be sending access token
                 /* Better approach would be to encrypt the access token using a random generated key, give the key to user and save 
                 encrypted access token in cache, when user make spotify api calls, they pass in the key and we decrypt and use the
                 access token! Can integrate after testing (if have time) */
                 //res.status(200).json({access_token : body.access_token, rest : JSON.stringify(body)});
-                res.redirect('http://localhost:3000?' + querystring.stringify({access_token : access_token}));
+                res.redirect('http://localhost:3000?' + querystring.stringify({sessionId : storedId}));
             } else {
                 res.json({error: 'invalid_token'});
             }
@@ -492,4 +456,95 @@ router.get('/recommendation', checkAndAcquireServerToken, function(req, res){
         }
     });
 });
+
+/* Check if user has access token in redis cache */
+function checkUserAccessTokenCache(req, res, next){
+    var id = escape(req.body.sessionId);
+    redis.get(id+':spotifyUserAccessToken', (err, data) => {
+        if(err) throw err;
+        if(data != null){
+            //res.status(200).send(data);
+            next();
+        }else{
+            res.status(204).send({error : 'incorrect sessionId'});
+        }
+    });
+}
+
+// used a golbal variable atoken for Access Token
+router.get('/newplaylist', checkUserAccessTokenCache, function(req, res) {
+    var sessionId = req.body.sessionId;
+    var userID = req.body.userId;
+    redis.get(sessionId+':spotifyUserAccessToken', (err, data)=>{
+        if(err) throw err;
+
+        if(data != null){
+            var options = {
+                'url': 'https://api.spotify.com/v1/users/' + userID + '/playlists',
+                'headers': {
+                    'Authorization': 'Bearer ' + data,
+                    'Content-Type': 'application/json'
+                },
+                'body': {
+                    'name': 'cool stuff'
+                },
+                json: true 
+            };
+        
+            request.post(options, function (error, response, body) {
+                if (!error && (response.statusCode === 200 || response.statusCode === 201)) {
+                    console.log(response.body);
+                    
+                    //save client into redis cache, access token should be valid for 1 hour for OAuth 2.0
+                    res.status(200).send(response.body.id);
+                } else{
+                    res.send(response.body);
+                }
+            });
+                
+        }else{
+            console.log('Error, no token');
+            res.status(204).json({error : 'Server Error!'});
+        }
+    });
+});
+
+router.post('/additems', checkUserAccessTokenCache, function(req, res) {
+    var pid = req.body.playlistID || null;
+    var uris = req.body.uris || null;
+    var sessionId = req.body.sessionId || null;
+
+    console.log(pid);
+
+    redis.get(sessionId+':spotifyUserAccessToken', (err, data)=>{
+        if(err) throw err;
+
+        if(data != null){
+            var options = {
+                'url': 'https://api.spotify.com/v1/playlists/' + pid + '/tracks?uris=' + uris,
+                'headers': {
+                    'Authorization': 'Bearer ' + atoken,
+                    'Content-Type': 'application/json'
+                },
+                json: true 
+            };
+        
+            request.post(options, function (error, response, body) {
+                if (!error && (response.statusCode === 200 || response.statusCode === 201)) {
+                    console.log(response.body);
+                    
+                    res.send(response.body);
+                } else{
+                    res.send(response.body);
+                }
+            });
+                
+        }else{
+            console.log('Error, no token');
+            res.status(204).json({error : 'Server Error!'});
+        }
+    });
+    
+});
+
 module.exports = router;
