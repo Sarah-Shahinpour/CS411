@@ -271,7 +271,7 @@ router.get('/logout', function(req, res){
     res.redirect('https://spotify.com/logout');
 });
 
-/* Have access token */
+/* routes that use server access token  */
 router.get('/nr', checkAndAcquireServerToken, function(req, res) { 
     redis.get('spotifyServerAccessToken', (err, data) => {
         if(err) throw err;
@@ -438,4 +438,58 @@ router.get('/artists/:name', checkAndAcquireServerToken, function(req, res){
     });
 });
 
+/* find track then display everything about them */
+router.get('/tracks/:song', checkAndAcquireServerToken, function(req, res){
+    let song = req.params.song;
+    redis.get('spotifyServerAccessToken', (err, data)=>{
+        if(err) throw err;
+
+        if(data != null){
+            var options = {
+                'url': 'https://api.spotify.com/v1/search?q='+song+'&type=track',
+                'headers': {
+                  'Authorization': 'Bearer ' + data,
+                  'Accept': 'application/json',
+                  'Content-Type': 'application/json'
+                }
+              };
+              request.get(options, function (error, response) {
+                if (error) throw new Error(error);
+                console.log(response.body);
+                res.status(200).send(JSON.stringify(response.body));
+              });
+        }else{
+            console.log('Error, no token');
+            res.status(204).json({error : 'Server Error!'});
+        }
+    });
+});
+
+/* find recommendations based on favorite artists, genre and tracks */
+router.get('/recommendation', checkAndAcquireServerToken, function(req, res){
+    var artists = req.query.artists || null;
+    var genre = req.query.genre || null;
+    var tracks = req.query.tracks || null;
+    redis.get('spotifyServerAccessToken', (err, data)=>{
+        if(err) throw err;
+
+        if(data != null){
+            var options = {
+                'method': 'GET',
+                'url': 'https://api.spotify.com/v1/recommendations?seed_artists=' +artists +'&seed_genres='+genre+'&seed_tracks=' + tracks,
+                'headers': {
+                  'Authorization': 'Bearer ' + data
+                }
+              };
+              request(options, function (error, response) {
+                if (error) throw new Error(error);
+                res.status(200).send(JSON.stringify(response.body));
+              });
+                
+        }else{
+            console.log('Error, no token');
+            res.status(204).json({error : 'Server Error!'});
+        }
+    });
+});
 module.exports = router;
