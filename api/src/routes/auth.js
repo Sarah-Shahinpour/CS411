@@ -8,6 +8,7 @@ const config = require('../config/config');
 const redis = require('./redis');
 /* import crypto-js */
 const CryptoJS = require('crypto-js');
+const querystring = require('querystring');
 
 var generateRandomString = function(length) {
     var text = '';
@@ -38,14 +39,16 @@ router.get('/users/:id', (req, res, next) => {
 //login, username and password required in the body
 router.post('/userlogin', (req, res, next)=>{
     //inputs, x-www-form-urlencoded in body
-    var myusername = escape(req.body.username);
-    var password = escape(req.body.password);
+    var myusername = req.body.username;
+    var password = req.body.password;
+    myusername = escape(myusername);
+    password = escape(password);
 
     Login.findOne({username : myusername}, function(err, userLogin){
         if(userLogin == null){
             console.log('Error! ' + myusername + ' tried to login using password ' + password);
             //401 Unauthorized or 403 : Forbidden
-            res.status(401).json({message : 'Error! Username or password is incorrect.'}); 
+            res.status(401).json({'message' : 'Error! Username or password is incorrect.'}); 
         } else{
             const saltedHash = CryptoJS.SHA256(config.crypto.salt+userLogin.rsalt+password);
             if(saltedHash == userLogin.getpassword){
@@ -61,12 +64,19 @@ router.post('/userlogin', (req, res, next)=>{
                     /* saves session for a day */
                     redis.setex('UserSession:'+sessionId, 43200, sess);
                     user.save();
-                    res.status(200).json({session : sessionId});
+                    const response = {
+                        "message" : '',
+                        sessionId : sessionId
+                    };
+                    res.cookie('sessionId', sessionId);
+                    console.log(response.sessionId);
+                    res.json(response);
+                    //res.redirect('http://localhost:3000?' + querystring.stringify({sessionId : storedId}));
                 });
             }else{
                 console.log('Error! ' + myusername + ' tried to login using password ' + password);
                 //401 Unauthorized or 403 : Forbidden
-                res.status(401).json({message : 'Error! Username or password is incorrect.'}); 
+                res.status(401).json({'message' : 'Error! Username or password is incorrect.'}); 
             }
         }
     });
@@ -92,12 +102,15 @@ router.post('/user', (req, res, next)=>{
         } else{
             //create user & user session ID
             var session = generateRandomString(8);
+            var sessionId = generateRandomString(16);
+            redis.setex('UserSession:'+sessionId, 43200, session);
             let newUser = new User({
                 spotify:{
                     havespotify: false,
                 },
                 session : session
             });
+
             newUser.save((err, user)=>{
                 if(err){
                     console.log(err);
@@ -128,7 +141,7 @@ router.post('/user', (req, res, next)=>{
                             });
                             res.status(400).json({msg: 'Failed to add user', error : err});
                         }else{
-                            res.status(200).json({msg: 'User added successfully', sessionId : session});
+                            res.status(200).json({msg: 'User added successfully', sessionId : sessionId});
                         }
                     });
                 }
