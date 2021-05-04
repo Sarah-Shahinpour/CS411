@@ -41,6 +41,197 @@ var generateRandomString = function(length) {
     return text;
 };
 
+/* login to spotify without account */
+router.get('/login/', function(req, res) {
+    var state = generateRandomString(16);
+    res.cookie(stateKey, state);
+    /* id is used to identify users not logged in to our app in cache */
+    var id = generateRandomString(32);
+    res.cookie(sessionId, id);
+
+    /* requests authorization */
+    var scope = 'user-read-private user-read-email playlist-modify-public';
+    res.redirect('https://accounts.spotify.com/authorize?' +
+    querystring.stringify({
+        response_type: 'code',
+        client_id: client_id,
+        scope: scope,
+        redirect_uri: redirect_uri,
+        state: state
+    }));
+});
+
+/* check for Access or Refresh token for an account login user */
+function checkUserRefreshToken(req, res, next){
+    var sessionId = req.params.id;
+    if(sesionId == null){
+        res.status(204).send({message : 'invalid sessionId'});
+    }
+    //first check if they already have access token
+    redis.get(sessionId+':spotifyUserAccessToken', (err, data)=>{
+        if(data != null){
+            //already have access token
+            res.redirect('http://localhost:3000/');
+        }else{
+            //then check if there's a valid user session
+            redis.get('UserSession:'+id, (err, data)=>{
+                if(err) {
+                    console.log('Invalid user session id detected!');
+                    res.status(204).send({message : 'Error, invalid session'});
+                }
+                if(data != null){
+                    User.findOne({session : data}, function(error, user){
+                        if(error){
+                            console.log('unable to find user schema when checking refresh token for spotify');
+                            //401 Unauthorized or 403 : Forbidden
+                            res.status(401).json({message : 'Unable to add spotify to account!'}); 
+                        }
+                        //check if user has refresh token (only does if login to spotift before)
+                        if(user != null){
+                            if(user.havespotify){
+                                //we checked cache already, so if we're here, it means we have refresh token but no access token
+                                var authOptions = {
+                                    url: 'https://accounts.spotify.com/api/token',
+                                    headers: { 'Authorization': 'Basic ' + (Buffer.from(client_id + ':' + client_secret).toString('base64'))},
+                                    form: {
+                                        grant_type: 'refresh_token',
+                                        refresh_token: user.refreshtoken
+                                    },
+                                    json: true
+                                };
+                                request.post(authOptions, function(error, response, body) {
+                                    if (!error && response.statusCode === 200) {
+                                        var access_token = body.access_token;
+                                        //save to cache & output
+                                        redis.setex(sessionId+':spotifyUserAccessToken', 3600, access_token);
+                                        res.redirect('http://localhost:3000/');
+                                    } else{
+                                        res.redirect('http://localhost:3000/');
+                                    }
+                                });
+                            }else{
+                                next();
+                            }
+                        }else{
+                            console.log('unable to find user schema when checking refresh token for spotify');
+                            res.status(401).json({message : 'Unable to add spotify to account!'}); 
+                        }
+                    });
+                } else{
+                    res.status(204).send({message : 'invalid sessionId'});
+                } 
+            });
+        }
+    });
+}
+
+/* login to spotify when login to application */
+router.get('/loginWithAcc/:id', function(req, res) {
+    //set a random string as state, this helps prevent Cross-site scripting attacks
+    //CAN BE MODIFIED MORE FOR OUR OWN SECURITY MEASURES
+    var state = generateRandomString(16);
+    res.cookie(stateKey, state);
+
+    /* we expect a valid login session id to map access token to */
+    var id = req.params.id;
+    res.cookie(sessionId, id);
+    res.cookie('haveAccount', true);
+
+    // your application requests authorization
+    var scope = 'user-read-private user-read-email playlist-modify-public';
+    res.redirect('https://accounts.spotify.com/authorize?' +
+    querystring.stringify({
+        response_type: 'code',
+        client_id: client_id,
+        scope: scope,
+        redirect_uri: redirect_uri,
+        state: state
+    }));
+});
+
+/* callback from login or loginWithAcc */
+router.get('/callback', function(req, res) {
+    var code = req.query.code || null;
+    var state = req.query.state || null;
+    var storedState = req.cookies ? req.cookies[stateKey] : null;
+    var storedId = req.cookies ? req.cookies[sessionId] : null;
+    var haveAcc = req.cookies ? req.cookies['haveAccount'] : null;
+
+    var haveLogin;
+    if(haveAcc != null){
+        haveLogin = true;
+        res.clearCookie('haveAccount');
+    }
+
+    // use the authorication_code provided to us in response to obtain the user's access token and refresh token
+    if (state === null || state !== storedState) {
+        res.json({error: "INVALID statekey"});
+    } else {
+        res.clearCookie(stateKey);
+        res.clearCookie(sessionId);
+
+        var authOptions = {
+            url: 'https://accounts.spotify.com/api/token',
+            form: {
+            code: code,
+            redirect_uri: redirect_uri,
+            grant_type: 'authorization_code'
+            },
+            headers: {
+            'Authorization': 'Basic ' + (Buffer.from(client_id + ':' + client_secret).toString('base64'))
+            },
+            json: true
+        };
+
+        //make a request call
+        request.post(authOptions, function(error, response, body) {
+            //callback from request call
+            if (!error && response.statusCode === 200) {
+                var access_token = body.access_token,
+                    refresh_token = body.refresh_token;
+
+                redis.setex(storedId+':spotifyUserAccessToken', 3600, access_token);
+                if(haveLogin){
+                    //save the refresh token
+                    redis.get('UserSession:'+storedId, (err, data)=>{
+                        if(err) {
+                            console.log('Invalid user session id detected!');
+                            res.status(204).send({message : 'Error, invalid session'});
+                        }
+                        if(data != null){
+                            User.findOne({session : data}, function(error, user){
+                                if(error){
+                                    console.log('unable to find user schema when checking refresh token for spotify');
+                                    //401 Unauthorized or 403 : Forbidden
+                                    res.status(401).json({message : 'Unable to add spotify to account!'}); 
+                                }
+                                if(user != null){
+                                    console.log('redirect..');
+                                    user.refreshtoken = refresh_token;
+                                    res.redirect('http://localhost:3000?' + querystring.stringify({loginSession : storedId}));
+                                } else{
+                                    res.status(204).send({message : "error, "});
+                                }
+                            });
+                        } else{
+                            res.status(204).send({message : 'invalid sessionId'});
+                        } 
+                    });
+                }else{
+                    res.redirect('http://localhost:3000?' + querystring.stringify({sessionId : storedId}));
+                }
+            } else {
+                res.json({error: 'invalid_token'});
+            }
+        });
+    }
+});
+
+/* log out */
+router.get('/logout', function(req, res){
+    res.redirect('https://spotify.com/logout');
+});
+
 /* complete server to server client credentials with spotify api */
 /* request access token if we don't have one in cache */
 function checkAndAcquireServerToken(req, res, next){
@@ -78,162 +269,6 @@ function checkAndAcquireServerToken(req, res, next){
         }
     });
 }
-
-/* login to spotify without account */
-router.get('/login/', function(req, res) {
-    var state = generateRandomString(16);
-    res.cookie(stateKey, state);
-    /* id is used to identify users not logged in to our app in cache */
-    var id = generateRandomString(32);
-    res.cookie(sessionId, id);
-
-    /* requests authorization */
-    var scope = 'user-read-private user-read-email';
-    res.redirect('https://accounts.spotify.com/authorize?' +
-    querystring.stringify({
-        response_type: 'code',
-        client_id: client_id,
-        scope: scope,
-        redirect_uri: redirect_uri,
-        state: state
-    }));
-});
-
-/* need to fix */
-function checkUserRefreshToken(req, res, next){
-    var id = req.params.id;
-    redis.get('UserSession:'+id, (err, data)=>{
-        if(err) {
-            console.log('Invalid user session id detected!');
-            res.json({message : 'Error, invalid session'});
-        }
-        User.findOne({session : data}, function(error, user){
-            if(error){
-                console.log('unable to find user schema when checking refresh token for spotify');
-                //401 Unauthorized or 403 : Forbidden
-                res.status(401).json({message : 'Unable to add spotify to account!'}); 
-            }
-            //check if user has refresh token (only does if login to spotift before)
-            if(user != null){
-                if(user.havespotify){
-                    //we checked cache already, so if we're here, it means we have refresh token but no access token
-                    var authOptions = {
-                        url: 'https://accounts.spotify.com/api/token',
-                        headers: { 'Authorization': 'Basic ' + (Buffer.from(client_id + ':' + client_secret).toString('base64'))},
-                        form: {
-                            grant_type: 'refresh_token',
-                            refresh_token: user.refreshtoken
-                        },
-                        json: true
-                    };
-                    request.post(authOptions, function(error, response, body) {
-                        if (!error && response.statusCode === 200) {
-                            var access_token = body.access_token;
-                            //save to cache & output
-                            redis.setex(id+':spotifyUserAccessToken', 360, access_token);
-                            res.redirect('http://localhost:3000?' + querystring.stringify({access_token : access_token}));
-                        } else{
-                            res.send({'access_token': "error"});
-                        }
-                    });
-                }else{
-                    next();
-                }
-            }else{
-                console.log('unable to find user schema when checking refresh token for spotify');
-                res.status(401).json({message : 'Unable to add spotify to account!'}); 
-            }
-        });
-    });
-}
-
-/* login to spotify when login to application */
-router.get('/loginWithAcc/:id/', checkUserRefreshToken, function(req, res) {
-    //set a random string as state, this helps prevent Cross-site scripting attacks
-    //CAN BE MODIFIED MORE FOR OUR OWN SECURITY MEASURES
-    var state = generateRandomString(16);
-    res.cookie(stateKey, state);
-
-    /* we expect a valid login session id to map access token to */
-    var id = req.params.id;
-    res.cookie(sessionId, id);
-    res.cookie('haveAccount', true);
-
-    // your application requests authorization
-    var scope = 'user-read-private user-read-email';
-    res.redirect('https://accounts.spotify.com/authorize?' +
-    querystring.stringify({
-        response_type: 'code',
-        client_id: client_id,
-        scope: scope,
-        redirect_uri: redirect_uri,
-        state: state
-    }));
-});
-
-/* callback from login or loginWithAcc */
-router.get('/callback', function(req, res) {
-    var code = req.query.code || null;
-    var state = req.query.state || null;
-    var storedState = req.cookies ? req.cookies[stateKey] : null;
-    var storedId = req.cookies ? req.cookies[sessionId] : null;
-
-    // use the authorication_code provided to us in response to obtain the user's access token and refresh token
-    if (state === null || state !== storedState) {
-        res.json({error: "INVALID statekey"});
-    } else {
-        res.clearCookie(stateKey);
-        res.clearCookie(sessionId);
-
-        var authOptions = {
-            url: 'https://accounts.spotify.com/api/token',
-            form: {
-            code: code,
-            redirect_uri: redirect_uri,
-            grant_type: 'authorization_code'
-            },
-            headers: {
-            'Authorization': 'Basic ' + (Buffer.from(client_id + ':' + client_secret).toString('base64'))
-            },
-            json: true
-        };
-
-        //make a request call
-        request.post(authOptions, function(error, response, body) {
-            //callback from request call
-            if (!error && response.statusCode === 200) {
-                var access_token = body.access_token,
-                    refresh_token = body.refresh_token;
-
-                // print the information of your spotify account to console. ***REMOVE IN PRODUCTION***
-                var options = {
-                    url: 'https://api.spotify.com/v1/me',
-                    headers: { 'Authorization': 'Bearer ' + access_token },
-                    json: true
-                };
-                request.get(options, function(error, response, body) {
-                    console.log(body);
-                });
-
-                redis.setex(storedId+':spotifyUserAccessToken', 3600, access_token);
-               
-                //WARNING!!! INSECURE, shouldn't be sending access token
-                /* Better approach would be to encrypt the access token using a random generated key, give the key to user and save 
-                encrypted access token in cache, when user make spotify api calls, they pass in the key and we decrypt and use the
-                access token! Can integrate after testing (if have time) */
-                //res.status(200).json({access_token : body.access_token, rest : JSON.stringify(body)});
-                res.redirect('http://localhost:3000?' + querystring.stringify({sessionId : storedId}));
-            } else {
-                res.json({error: 'invalid_token'});
-            }
-        });
-    }
-});
-
-/* log out */
-router.get('/logout', function(req, res){
-    res.redirect('https://spotify.com/logout');
-});
 
 /* routes that use server access token  */
 router.get('/nr', checkAndAcquireServerToken, function(req, res) { 
@@ -289,37 +324,6 @@ router.get('/featuredplaylist', checkAndAcquireServerToken, function(req, res){
     });
 });
 
-/* search for an item */
-router.post('/search', checkAndAcquireServerToken, function(req, res){
-    /* Types: album , artist, playlist, track, show and episode. */
-    var type = req.body.type || null;
-    var query = req.body.q || null;
-
-    redis.get('spotifyServerAccessToken', (err, data)=>{
-        if(err) throw err;
-
-        if(data != null){
-            var options = {
-                'url': 'https://api.spotify.com/v1/search?q='+query+'&type='+type,
-                'headers': {
-                  'Authorization': 'Bearer ' + data,
-                  'Accept': 'application/json',
-                  'Content-Type': 'application/json'
-                }
-              };
-              request.get(options, function (error, response) {
-                if (error) throw new Error(error);
-                console.log(response.body);
-                res.status(200).send(JSON.stringify(response.body));
-              });
-              
-        }else{
-            console.log('Error, no token');
-            res.status(204).json({error : 'Server Error!'});
-        }
-    });
-});
-
 /* show all available genres on spotify */
 router.get('/genre', checkAndAcquireServerToken, function(req, res){
     redis.get('spotifyServerAccessToken', (err, data)=>{
@@ -355,6 +359,37 @@ router.get('/categories', checkAndAcquireServerToken, function(req, res){
         if(data != null){
             var options = {
                 'url': 'https://api.spotify.com/v1/browse/categories',
+                'headers': {
+                  'Authorization': 'Bearer ' + data,
+                  'Accept': 'application/json',
+                  'Content-Type': 'application/json'
+                }
+              };
+              request.get(options, function (error, response) {
+                if (error) throw new Error(error);
+                console.log(response.body);
+                res.status(200).send(JSON.stringify(response.body));
+              });
+              
+        }else{
+            console.log('Error, no token');
+            res.status(204).json({error : 'Server Error!'});
+        }
+    });
+});
+
+/* search for an item */
+router.post('/search', checkAndAcquireServerToken, function(req, res){
+    /* Types: album , artist, playlist, track, show and episode. */
+    var type = req.body.type || null;
+    var query = req.body.q || null;
+
+    redis.get('spotifyServerAccessToken', (err, data)=>{
+        if(err) throw err;
+
+        if(data != null){
+            var options = {
+                'url': 'https://api.spotify.com/v1/search?q='+query+'&type='+type,
                 'headers': {
                   'Authorization': 'Bearer ' + data,
                   'Accept': 'application/json',
@@ -458,50 +493,104 @@ router.get('/recommendation', checkAndAcquireServerToken, function(req, res){
 });
 
 /* Check if user has access token in redis cache */
+/* deny ALL that don't have a mapping on redis */
 function checkUserAccessTokenCache(req, res, next){
-    var id = escape(req.body.sessionId);
-    redis.get(id+':spotifyUserAccessToken', (err, data) => {
-        if(err) throw err;
+    var sessionId = req.cookies ? req.cookies['sessionId'] : null;
+    redis.get(sessionId+':spotifyUserAccessToken', (err, data)=>{
         if(data != null){
-            //res.status(200).send(data);
             next();
         }else{
-            res.status(204).send({error : 'incorrect sessionId'});
+            redis.get('UserSession:'+sessionId, (err, data)=>{
+                if(err) throw err;
+                if(data != null){
+                    //here we have a user login session with no access token, use refresh token if possible
+                    User.findOne({session : data}, function(error, user){
+                        if(error){
+                            console.log('unable to find user schema when checking refresh token for spotify');
+                            //401 Unauthorized or 403 : Forbidden
+                            res.status(403).json({message : 'Unable to add spotify to account!'}); 
+                        }
+                        //check if user has refresh token (only does if login to spotift before)
+                        if(user != null){
+                            if(user.havespotify){
+                                //we checked cache already, so if we're here, it means we have refresh token but no access token
+                                var authOptions = {
+                                    url: 'https://accounts.spotify.com/api/token',
+                                    headers: { 'Authorization': 'Basic ' + (Buffer.from(client_id + ':' + client_secret).toString('base64'))},
+                                    form: {
+                                        grant_type: 'refresh_token',
+                                        refresh_token: user.refreshtoken
+                                    },
+                                    json: true
+                                };
+                                request.post(authOptions, function(error, response, body) {
+                                    if (!error && response.statusCode === 200) {
+                                        var access_token = body.access_token;
+                                        //save to cache & output
+                                        redis.setex(sessionId+':spotifyUserAccessToken', 3600, access_token);
+                                        next();
+                                    } 
+                                });
+                            }else{
+                                next();
+                            }
+                        }else{
+                            next();
+                        }
+                    });
+                }else{
+                    next();
+                }
+            });
         }
     });
 }
 
 // used a golbal variable atoken for Access Token
-router.get('/newplaylist', checkUserAccessTokenCache, function(req, res) {
-    var sessionId = req.body.sessionId;
-    var userID = req.body.userId;
+router.get('/newplaylist',checkUserAccessTokenCache,function(req, res) {
+    var sessionId = req.cookies ? req.cookies['sessionId'] : null;
+    var userID = '';
     redis.get(sessionId+':spotifyUserAccessToken', (err, data)=>{
         if(err) throw err;
 
         if(data != null){
+            // get information about the 
             var options = {
-                'url': 'https://api.spotify.com/v1/users/' + userID + '/playlists',
-                'headers': {
-                    'Authorization': 'Bearer ' + data,
-                    'Content-Type': 'application/json'
-                },
-                'body': {
-                    'name': 'cool stuff'
-                },
-                json: true 
+                url: 'https://api.spotify.com/v1/me',
+                headers: { 'Authorization': 'Bearer ' + data },
+                json: true
             };
-        
-            request.post(options, function (error, response, body) {
-                if (!error && (response.statusCode === 200 || response.statusCode === 201)) {
-                    console.log(response.body);
+            request.get(options, function(error, response, body) {
+                if(!error){
+                    userID = JSON.stringify(body.id);
+                    userID = userID.replaceAll('"', '');
                     
-                    //save client into redis cache, access token should be valid for 1 hour for OAuth 2.0
-                    res.status(200).send(response.body.id);
-                } else{
-                    res.send(response.body);
+                    //if was able to receive info for userId, then make account
+                    var options = {
+                        'url': 'https://api.spotify.com/v1/users/' + userID + '/playlists?=',
+                        'headers': {
+                        'Authorization': 'Bearer ' + data,
+                        'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                        "name": "Made By 411APP"
+                        })
+                    };
+                    request.post(options, function (error, response) {
+                        if (!error && (response.statusCode === 200 || response.statusCode === 201)) {
+                            //console.log(response.body);
+                            res.status(200).send(response.body);
+                        } else if(response.statusCode === 403 || response.statusCode === 401 || response.statusCode === 400){
+                            console.log(response.statusCode);
+                            res.status(405).send('Invalid scope or access token!');
+                        } else{
+                            res.status(204).send(error);
+                        }
+                    });
+                }else{
+                    res.status(402).send(error);
                 }
-            });
-                
+            }); 
         }else{
             console.log('Error, no token');
             res.status(204).json({error : 'Server Error!'});
@@ -512,7 +601,7 @@ router.get('/newplaylist', checkUserAccessTokenCache, function(req, res) {
 router.post('/additems', checkUserAccessTokenCache, function(req, res) {
     var pid = req.body.playlistID || null;
     var uris = req.body.uris || null;
-    var sessionId = req.body.sessionId || null;
+    var sessionId = req.cookies ? req.cookies['sessionId'] : null;
 
     console.log(pid);
 
@@ -523,7 +612,7 @@ router.post('/additems', checkUserAccessTokenCache, function(req, res) {
             var options = {
                 'url': 'https://api.spotify.com/v1/playlists/' + pid + '/tracks?uris=' + uris,
                 'headers': {
-                    'Authorization': 'Bearer ' + atoken,
+                    'Authorization': 'Bearer ' + data,
                     'Content-Type': 'application/json'
                 },
                 json: true 
