@@ -68,8 +68,6 @@ router.post('/userlogin', (req, res, next)=>{
                         "message" : '',
                         sessionId : sessionId
                     };
-                    res.cookie('sessionId', sessionId);
-                    console.log(response.sessionId);
                     res.json(response);
                     //res.redirect('http://localhost:3000?' + querystring.stringify({sessionId : storedId}));
                 });
