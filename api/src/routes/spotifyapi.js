@@ -286,9 +286,6 @@ router.get('/nr', checkAndAcquireServerToken, function(req, res) {
               request.get(options, function (error, response) {
                 if (error) throw new Error(error);
                 
-                //output the album and author names,
-                console.log(response.body);
-                //res.send(response.body);
                 res.status(200).send(JSON.stringify(response.body));
               });
         }else{
@@ -314,7 +311,6 @@ router.get('/featuredplaylist', checkAndAcquireServerToken, function(req, res){
             };
             request.get(options, function (error, response) {
                 if (error) throw new Error(error);
-                console.log(response.body);
                 res.status(200).send(JSON.stringify(response.body));
             });
         }else{
@@ -340,7 +336,6 @@ router.get('/genre', checkAndAcquireServerToken, function(req, res){
               };
               request.get(options, function (error, response) {
                 if (error) throw new Error(error);
-                console.log(response.body);
                 res.status(200).send(JSON.stringify(response.body));
               });
               
@@ -367,7 +362,6 @@ router.get('/categories', checkAndAcquireServerToken, function(req, res){
               };
               request.get(options, function (error, response) {
                 if (error) throw new Error(error);
-                console.log(response.body);
                 res.status(200).send(JSON.stringify(response.body));
               });
               
@@ -398,12 +392,24 @@ router.post('/search', checkAndAcquireServerToken, function(req, res){
               };
               request.get(options, function (error, response) {
                 if (error) throw new Error(error);
-                console.log(response.body);
-                res.status(200).send(JSON.stringify(response.body));
+                body = JSON.parse(response.body);
+                if (type === "artist") {
+                    if (body["artists"]["total"] == "0") {
+                        res.status(401).send("error");
+                        return
+                    }
+                    res.status(200).send(JSON.stringify(body["artists"]["items"][0]["id"]));
+                }
+                else {
+                    if (body["tracks"]["total"] == "0") {
+                        res.status(401).send("error");
+                        return
+                    }
+                    res.status(200).send(JSON.stringify(body["tracks"]["items"][0]["id"]));
+                }
               });
               
         }else{
-            console.log('Error, no token');
             res.status(204).json({error : 'Server Error!'});
         }
     });
@@ -426,7 +432,6 @@ router.get('/artists/:name', checkAndAcquireServerToken, function(req, res){
               };
               request.get(options, function (error, response) {
                 if (error) throw new Error(error);
-                console.log(response.body);
                 res.status(200).send(JSON.stringify(response.body));
               });
               
@@ -454,7 +459,6 @@ router.get('/tracks/:song', checkAndAcquireServerToken, function(req, res){
               };
               request.get(options, function (error, response) {
                 if (error) throw new Error(error);
-                console.log(response.body);
                 res.status(200).send(JSON.stringify(response.body));
               });
         }else{
@@ -563,7 +567,7 @@ router.get('/newplaylist',checkUserAccessTokenCache,function(req, res) {
             request.get(options, function(error, response, body) {
                 if(!error){
                     userID = JSON.stringify(body.id);
-                    userID = userID.replaceAll('"', '');
+                    userID = userID.replace(/"/g,'');
                     
                     //if was able to receive info for userId, then make account
                     var options = {
@@ -573,13 +577,13 @@ router.get('/newplaylist',checkUserAccessTokenCache,function(req, res) {
                         'Content-Type': 'application/json'
                         },
                         body: JSON.stringify({
-                        "name": "Made By 411APP"
+                        "name": "Made By CS411 TEAM11"
                         })
                     };
                     request.post(options, function (error, response) {
                         if (!error && (response.statusCode === 200 || response.statusCode === 201)) {
-                            //console.log(response.body);
-                            res.status(200).send(response.body);
+                            res_body = JSON.parse(response.body);
+                            res.status(200).send(res_body["id"]);
                         } else if(response.statusCode === 403 || response.statusCode === 401 || response.statusCode === 400){
                             console.log(response.statusCode);
                             res.status(405).send('Invalid scope or access token!');
@@ -603,8 +607,6 @@ router.post('/additems', checkUserAccessTokenCache, function(req, res) {
     var uris = req.body.uris || null;
     var sessionId = req.cookies ? req.cookies['sessionId'] : null;
 
-    console.log(pid);
-
     redis.get(sessionId+':spotifyUserAccessToken', (err, data)=>{
         if(err) throw err;
 
@@ -619,9 +621,7 @@ router.post('/additems', checkUserAccessTokenCache, function(req, res) {
             };
         
             request.post(options, function (error, response, body) {
-                if (!error && (response.statusCode === 200 || response.statusCode === 201)) {
-                    console.log(response.body);
-                    
+                if (!error && (response.statusCode === 200 || response.statusCode === 201)) {                    
                     res.send(response.body);
                 } else{
                     res.send(response.body);
