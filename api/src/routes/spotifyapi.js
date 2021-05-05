@@ -71,7 +71,7 @@ function checkUserRefreshToken(req, res, next){
     redis.get(sessionId+':spotifyUserAccessToken', (err, data)=>{
         if(data != null){
             //already have access token
-            res.redirect('http://localhost:3000/');
+            res.redirect('http://localhost:3000?' + querystring.stringify({loginSession : sessionId}));
         }else{
             //then check if there's a valid user session
             redis.get('UserSession:'+id, (err, data)=>{
@@ -104,7 +104,7 @@ function checkUserRefreshToken(req, res, next){
                                         var access_token = body.access_token;
                                         //save to cache & output
                                         redis.setex(sessionId+':spotifyUserAccessToken', 3600, access_token);
-                                        res.redirect('http://localhost:3000/');
+                                        res.redirect('http://localhost:3000?' + querystring.stringify({loginSession : sessionId}));
                                     } else{
                                         res.redirect('http://localhost:3000/');
                                     }
@@ -206,8 +206,8 @@ router.get('/callback', function(req, res) {
                                     res.status(401).json({message : 'Unable to add spotify to account!'}); 
                                 }
                                 if(user != null){
-                                    console.log('redirect..');
                                     user.refreshtoken = refresh_token;
+                                    user.save();
                                     res.redirect('http://localhost:3000?' + querystring.stringify({loginSession : storedId}));
                                 } else{
                                     res.status(204).send({message : "error, "});
