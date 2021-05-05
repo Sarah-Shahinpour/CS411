@@ -19,9 +19,11 @@ class App extends Component {
         session : 'none',
         username : '',
         password : '',
+        email : '',
         link : 'http://localhost:3001/spotifyapi/login',
         makeAcc : false,
         loggedIn : false,
+        loginSpotify : false
     };   
     this.handleChange = this.handleChange.bind(this);
     this.handleSubmit = this.handleSubmit.bind(this);
@@ -231,10 +233,18 @@ getSpotifyFeaturedPlaylist(){
     let a_token = window.location.search;
     if (a_token) {
         if (a_token.slice(0, 11) === "?sessionId=") {
-            this.setState({session: a_token.slice(11)});
+            this.setState({
+                session: a_token.slice(11),
+                loginSpotify : true, 
+                loggedIn : false,
+            });
             window.history.pushState({}, null, "/");
         }else if (a_token.slice(0, 14) === "?loginSession=") {
-            this.setState({session: a_token.slice(14), loggedIn : true});
+            this.setState({session: a_token.slice(14), 
+                loggedIn : true, 
+                link : 'http://localhost:3001/spotifyapi/loginWithAcc/'+a_token.slice(14),
+                loginSpotify : true,
+            });
             window.history.pushState({}, null, "/");
         }
     }
@@ -264,6 +274,7 @@ getSpotifyFeaturedPlaylist(){
             this.setState({
                 session : result.sessionId,
                 loggedIn : true,
+                loginSpotify : false,
                 link : 'http://localhost:3001/spotifyapi/loginWithAcc/'+result.sessionId
             });
           }
@@ -272,6 +283,33 @@ getSpotifyFeaturedPlaylist(){
 
   AccSubmit(event){
     event.preventDefault();
+    const {username, password, email} = this.state;
+    var myHeaders = new Headers();
+    myHeaders.append("Content-Type", "application/json");
+    var data = JSON.stringify({
+        "username": username,
+        "password": password,
+        "email": email
+      });
+      
+      var requestOptions = {
+        method: 'POST',
+        headers: myHeaders,
+        body: data,
+        redirect: 'follow'
+      };
+      
+      fetch("/login/user", requestOptions)
+      .then(response => response.json())
+      .then(result =>{
+          if(result.sessionId!=null){
+            this.setState({
+                loggedIn : true,
+                session : result.sessionId,
+                link : 'http://localhost:3001/spotifyapi/loginWithAcc/'+result.sessionId
+            });
+          }
+      });
   }
 
   toggleAccount(){
@@ -280,7 +318,7 @@ getSpotifyFeaturedPlaylist(){
           makeAcc : !makeAcc
       });
   }
-  loginPanel(loggedIn, makeAcc){
+  loginPanel(loggedIn, makeAcc, loginSpotify, link){
       if(!loggedIn){
         if(makeAcc){
             return (
@@ -296,9 +334,9 @@ getSpotifyFeaturedPlaylist(){
                     </label><br></br>
                     <label>
                       Email:
-                      <input type="text" name="password" value={this.state.password} onChange={this.handleChange} />
+                      <input type="text" name="email" value={this.state.email} onChange={this.handleChange} />
                     </label><br></br>
-                    <input type="submit" value="Enter" />
+                    <input type="submit" value="Create" />
                   </form>
                   <button onClick={this.toggleAccount}>Login</button>
                 </>);
@@ -314,23 +352,35 @@ getSpotifyFeaturedPlaylist(){
                       Password:
                       <input type="text" name="password" value={this.state.password} onChange={this.handleChange} />
                     </label><br></br>
-                    <input type="submit" value="Enter" />
+                    <input type="submit" value="Login" />
                   </form>
                   <button onClick={this.toggleAccount}>Sign Up</button>
+                  <br></br>
+                  <a className="App-link" href={link}>Log In To Spotify</a>
                 </>);
           }
       }else{
-        return (
-            <>
-            <p>LOL THERE's no logging out :D</p>
-            </>);
+          if(loginSpotify){
+            return (
+                <>
+                <p>LOL THERE's no logging out :D</p>
+                </>);
+          }else{
+            return (
+                <>
+                <p>LOL THERE's no logging out :D</p>
+                <br></br>
+                <a className="App-link" href={link}>Log In To Spotify</a>
+                </>);
+          }
+        
       }
     
   }
 
   render() {
-      const {displayArray, type, session, makeAcc, link, loggedIn} = this.state;
-      const login = this.loginPanel(loggedIn, makeAcc);
+      const {displayArray, type, session, makeAcc, link, loggedIn, loginSpotify} = this.state;
+      const login = this.loginPanel(loggedIn, makeAcc, loginSpotify, link);
       
     return (
         <>
@@ -364,13 +414,9 @@ getSpotifyFeaturedPlaylist(){
           </div>
         <div id="login">
          {login}
-         <br></br>
-         <a className="App-link" href={link}>Log In To Spotify</a>
         </div>
       </div>
       <div id="display">
-          <h1>{this.state.username || 'nothing'}</h1>
-          <h1>{this.state.password || 'nothing'}</h1>
         <View arr={displayArray} type={type}></View>
       </div>
       </>
