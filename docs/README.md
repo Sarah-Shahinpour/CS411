@@ -1,3 +1,6 @@
+CS 411 Team 11
+
+
 Idea #1 - Recommending shows based on watch history on different platforms like Hulu, Netflix, Disney+...
 This app will help users to find shows and movies they would like based on their watch history. Users will be able to link their accounts on streaming platforms and after analyzing their watch history the application will suggest movies and shows from different platforms based on what combination of genres he/she enjoys the most, as well as where it can be watched. This is desirable because instead of Netflix only recommending Netflix shows for example, here the scope is much bigger, therefore the recommendations become much more accurate, since it is an algorithm that better fits user's taste.
 AS A BONUS: This app will also allow users to make the lists of movies they would like to watch and notify them if something from the list matches the item in their friends list so they can watch it together. We also could expand the app so we could share shows we liked and would recommend to their friends.
